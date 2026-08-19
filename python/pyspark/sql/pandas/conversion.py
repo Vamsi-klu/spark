@@ -202,6 +202,32 @@ def create_arrow_table_from_pandas(
     return pa.Table.from_arrays(arrs, names=["_%d" % i for i in range(len(arrs))])
 
 
+def _floor_time64_ns_to_microseconds(arrow_table: "pa.Table") -> "pa.Table":
+    """Floor leftover nanoseconds on top-level time64[ns] columns.
+
+    pandas ``datetime.time`` is microsecond-only. PyArrow ``to_pandas`` raises
+    ArrowInvalid on a non-zero nanosecond remainder. ``collect()`` already
+    returns microsecond ``datetime.time`` values for TIME(9).
+    """
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.types as types
+
+    if not any(types.is_time64(c.type) and c.type.unit == "ns" for c in arrow_table.columns):
+        return arrow_table
+
+    def _floor(col: "pa.ChunkedArray") -> "pa.ChunkedArray":
+        if types.is_time64(col.type) and col.type.unit == "ns":
+            ns = pc.cast(col, pa.int64())
+            return pc.cast(pc.multiply(pc.divide(ns, 1000), 1000), pa.time64("ns"))
+        return col
+
+    return pa.Table.from_arrays(
+        [_floor(c) for c in arrow_table.columns],
+        names=list(arrow_table.column_names),
+    )
+
+
 def _convert_arrow_table_to_pandas(
     arrow_table: "pa.Table",
     schema: "StructType",
@@ -280,7 +306,9 @@ def _convert_arrow_table_to_pandas(
         error_on_duplicated_field_names = True
         struct_handling_mode = "dict"
 
-    # Convert arrow columns to pandas Series
+    # Convert arrow columns to pandas Series. Floor TIME leftover ns first so
+    # to_pandas can map time64[ns] onto datetime.time (microseconds only).
+    arrow_table = _floor_time64_ns_to_microseconds(arrow_table)
     column_data = (arrow_col.to_pandas(**pandas_options) for arrow_col in arrow_table.columns)
 
     # Apply Spark-specific type converters to each column
@@ -1078,7 +1106,6 @@ class SparkConversionMixin:
 
         from pyspark.sql.pandas.serializers import ArrowStreamSerializer
         from pyspark.sql.pandas.types import (
-            from_arrow_type,
             from_arrow_schema,
             to_arrow_schema,
             _check_arrow_table_timestamps_localize,
@@ -1087,18 +1114,11 @@ class SparkConversionMixin:
 
         require_minimum_pyarrow_version()
 
-        # Create the Spark schema from list of names passed in with Arrow types
+        # Names-only: infer types from Arrow fields so TIME(p) metadata is kept.
+        # from_arrow_type looks at the type alone and always yields TIME(6).
         if isinstance(schema, (list, tuple)):
             table = table.rename_columns(schema)
-            arrow_schema = table.schema
-            struct = StructType()
-            for name, field in zip(schema, arrow_schema):
-                struct.add(
-                    name,
-                    from_arrow_type(field.type, prefer_timestamp_ntz),
-                    nullable=field.nullable,
-                )
-            schema = struct
+            schema = from_arrow_schema(table.schema, prefer_timestamp_ntz=prefer_timestamp_ntz)
 
         if not isinstance(schema, StructType):
             schema = from_arrow_schema(table.schema, prefer_timestamp_ntz=prefer_timestamp_ntz)

@@ -72,9 +72,7 @@ class MapInArrowTestsMixin:
 
         for literal, precision, expected in cases:
             with self.subTest(precision=precision):
-                df = self.spark.sql(
-                    "SELECT CAST('%s' AS TIME(%d)) AS t" % (literal, precision)
-                )
+                df = self.spark.sql("SELECT CAST('%s' AS TIME(%d)) AS t" % (literal, precision))
 
                 def check_metadata(iterator):
                     key = b"SPARK::time::precision"

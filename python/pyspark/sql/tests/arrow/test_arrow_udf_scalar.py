@@ -493,9 +493,7 @@ class ScalarArrowUDFTestsMixin:
         )
         for literal, precision, expected in cases:
             with self.subTest(precision=precision):
-                df = self.spark.sql(
-                    "SELECT CAST('%s' AS TIME(%d)) AS t" % (literal, precision)
-                )
+                df = self.spark.sql("SELECT CAST('%s' AS TIME(%d)) AS t" % (literal, precision))
 
                 @arrow_udf(TimeType(precision))
                 def ident(v):

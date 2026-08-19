@@ -283,9 +283,7 @@ class ArrowPythonUDFTestsMixin(BaseUDFTestsMixin):
         for literal, precision, expected in cases:
             for use_arrow in (True, False):
                 with self.subTest(precision=precision, use_arrow=use_arrow):
-                    df = self.spark.sql(
-                        "SELECT CAST('%s' AS TIME(%d)) AS t" % (literal, precision)
-                    )
+                    df = self.spark.sql("SELECT CAST('%s' AS TIME(%d)) AS t" % (literal, precision))
                     ident = udf(lambda t: t, TimeType(precision), useArrow=use_arrow)
                     out = df.select(ident("t").alias("t"))
                     self.assertEqual(out.schema["t"].dataType, TimeType(precision))
