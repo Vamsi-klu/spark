@@ -1162,9 +1162,6 @@ class QueryCompilationErrorsSuite
         sqlState = "42601",
         parameters = Map("serdeInfo" -> "UNKNOWN_FORMAT"))
 
-      // HiveSerDe.sourceToSerDe folds case; a known format must still be accepted.
-      sql("CREATE TABLE s (c1 INT) STORED AS PARQUET")
-
       checkError(
         exception = intercept[AnalysisException] {
           sql("CREATE TABLE t STORED AS UNKNOWN_FORMAT AS SELECT 1")
@@ -1173,6 +1170,8 @@ class QueryCompilationErrorsSuite
         sqlState = "42601",
         parameters = Map("serdeInfo" -> "UNKNOWN_FORMAT"))
 
+      // Source table uses USING so this suite does not need Hive.
+      sql("CREATE TABLE s (c1 INT) USING parquet")
       checkError(
         exception = intercept[AnalysisException] {
           sql("CREATE TABLE t LIKE s STORED AS UNKNOWN_FORMAT")
