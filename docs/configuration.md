@@ -1839,8 +1839,8 @@ Apart from these, the following properties are also available, and may be useful
   <td>None</td>
   <td>
     Comma separated list of filter class names to apply to the Spark Web UI. The filter should be a
-    standard <a href="http://docs.oracle.com/javaee/6/api/javax/servlet/Filter.html">
-    javax servlet Filter</a>.
+    standard <a href="https://jakarta.ee/specifications/servlet/6.0/apidocs/jakarta.servlet/jakarta/servlet/filter">
+    Jakarta Servlet Filter</a>.
 
     <br />Filter parameters can also be specified in the configuration, by setting config entries
     of the form <code>spark.&lt;class name of filter&gt;.param.&lt;param name&gt;=&lt;value&gt;</code>

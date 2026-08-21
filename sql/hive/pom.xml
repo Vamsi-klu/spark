@@ -151,7 +151,7 @@
       <groupId>org.apache.httpcomponents</groupId>
       <artifactId>httpclient</artifactId>
     </dependency>
-    <!-- transitive dependencies of hive-exec-core doesn't declare -->
+    <!-- SPARK-47118: Hive 2.3 still uses javax.servlet; hive-exec-core does not declare it. -->
     <dependency>
       <groupId>javax.servlet</groupId>
       <artifactId>javax.servlet-api</artifactId>
