@@ -1136,6 +1136,19 @@ class QueryCompilationErrorsSuite
     )
   }
 
+  test("ADD_COLUMN_NOT_NULL_UNSUPPORTED: v1 table ADD COLUMN with NOT NULL") {
+    withTable("t") {
+      sql("CREATE TABLE t(i INT) USING parquet")
+      checkError(
+        exception = intercept[AnalysisException] {
+          sql("ALTER TABLE t ADD COLUMN c INT NOT NULL")
+        },
+        condition = "ADD_COLUMN_NOT_NULL_UNSUPPORTED",
+        sqlState = "0A000",
+        parameters = Map())
+    }
+  }
+
   test("SPARK-58349: TABLE_LOCATION_URI_NOT_SPECIFIED: table does not specify locationUri") {
     val identifier = TableIdentifier("t", Some("db"))
     val table = CatalogTable(
