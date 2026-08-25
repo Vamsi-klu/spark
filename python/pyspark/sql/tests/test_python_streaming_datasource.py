@@ -559,61 +559,6 @@ class BasePythonStreamingDataSourceTestsMixin:
         self.assertEqual(end, start)
         self.assertEqual(len(wrapper.cache), 0)
 
-    def test_simple_stream_reader_wrapper_read_replays_between_offsets(self):
-        from pyspark.sql.datasource_internal import (
-            SimpleInputPartition,
-            _SimpleStreamReaderWrapper,
-        )
-
-        class ReplayReader(SimpleDataSourceStreamReader):
-            def initialOffset(self):
-                return {"offset": 0}
-
-            def read(self, start: dict):
-                return (iter([]), start)
-
-            def readBetweenOffsets(self, start: dict, end: dict):
-                return iter([(start["offset"],), (end["offset"],)])
-
-            def commit(self, end: dict):
-                pass
-
-        wrapper = _SimpleStreamReaderWrapper(ReplayReader())
-        partitions = wrapper.partitions({"offset": 1}, {"offset": 3})
-        self.assertEqual(len(partitions), 1)
-        self.assertIsInstance(partitions[0], InputPartition)
-        self.assertNotIsInstance(partitions[0], SimpleInputPartition)
-        self.assertIsInstance(partitions[0].value, SimpleInputPartition)
-        self.assertEqual(list(wrapper.read(partitions[0])), [(1,), (3,)])
-
-    def test_simple_stream_reader_wrapper_read_rejects_non_offset_payload(self):
-        from pyspark.sql.datasource_internal import _SimpleStreamReaderWrapper
-
-        class ReplayReader(SimpleDataSourceStreamReader):
-            def initialOffset(self):
-                return {"offset": 0}
-
-            def read(self, start: dict):
-                return (iter([]), start)
-
-            def readBetweenOffsets(self, start: dict, end: dict):
-                return iter([])
-
-            def commit(self, end: dict):
-                pass
-
-        wrapper = _SimpleStreamReaderWrapper(ReplayReader())
-        with self.assertRaises(PySparkRuntimeError) as cm:
-            wrapper.read(InputPartition(1))
-        self.check_error(
-            exception=cm.exception,
-            errorClass="DATA_SOURCE_TYPE_MISMATCH",
-            messageParameters={
-                "expected": "InputPartition.value to be of type 'SimpleInputPartition'",
-                "actual": "'int'",
-            },
-        )
-
     def test_stream_writer(self):
         input_dir = tempfile.TemporaryDirectory(prefix="test_data_stream_write_input")
         output_dir = tempfile.TemporaryDirectory(prefix="test_data_stream_write_output")
@@ -814,6 +759,57 @@ class BasePythonStreamingDataSourceTestsMixin:
 
 class PythonStreamingDataSourceTests(BasePythonStreamingDataSourceTestsMixin, ReusedSQLTestCase):
     pass
+
+
+class SimpleStreamReaderWrapperTests(unittest.TestCase):
+    """Wrapper read/partitions tests. These do not need a SparkSession or PyArrow."""
+
+    def _replay_reader(self, records=None):
+        class ReplayReader(SimpleDataSourceStreamReader):
+            def initialOffset(self):
+                return {"offset": 0}
+
+            def read(self, start: dict):
+                return (iter([]), start)
+
+            def readBetweenOffsets(self, start: dict, end: dict):
+                if records is not None:
+                    return iter(records)
+                return iter([(start["offset"],), (end["offset"],)])
+
+            def commit(self, end: dict):
+                pass
+
+        return ReplayReader()
+
+    def test_read_replays_between_offsets(self):
+        from pyspark.sql.datasource_internal import (
+            SimpleInputPartition,
+            _SimpleStreamReaderWrapper,
+        )
+
+        wrapper = _SimpleStreamReaderWrapper(self._replay_reader())
+        partitions = wrapper.partitions({"offset": 1}, {"offset": 3})
+        self.assertEqual(len(partitions), 1)
+        self.assertIsInstance(partitions[0], InputPartition)
+        self.assertNotIsInstance(partitions[0], SimpleInputPartition)
+        self.assertIsInstance(partitions[0].value, SimpleInputPartition)
+        self.assertEqual(list(wrapper.read(partitions[0])), [(1,), (3,)])
+
+    def test_read_rejects_non_offset_payload(self):
+        from pyspark.sql.datasource_internal import _SimpleStreamReaderWrapper
+
+        wrapper = _SimpleStreamReaderWrapper(self._replay_reader(records=[]))
+        with self.assertRaises(PySparkRuntimeError) as cm:
+            wrapper.read(InputPartition(1))
+        self.assertEqual(cm.exception.getCondition(), "DATA_SOURCE_TYPE_MISMATCH")
+        self.assertEqual(
+            cm.exception.getMessageParameters(),
+            {
+                "expected": "InputPartition.value to be of type 'SimpleInputPartition'",
+                "actual": "'int'",
+            },
+        )
 
 
 if __name__ == "__main__":
