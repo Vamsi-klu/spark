@@ -23,7 +23,7 @@ import org.apache.spark.{SPARK_DOC_ROOT, SparkIllegalArgumentException, SparkUns
 import org.apache.spark.sql._
 import org.apache.spark.sql.api.java.{UDF1, UDF2, UDF23Test}
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType}
+import org.apache.spark.sql.catalyst.catalog.{CatalogStorageFormat, CatalogTable, CatalogTableType, InvalidUDFClassException}
 import org.apache.spark.sql.catalyst.expressions.{Coalesce, Literal, UnsafeRow}
 import org.apache.spark.sql.catalyst.parser.ParseException
 import org.apache.spark.sql.execution.datasources.SaveIntoDataSourceCommand
@@ -281,6 +281,14 @@ class QueryCompilationErrorsSuite
       condition = "UNSUPPORTED_FEATURE.TOO_MANY_TYPE_ARGUMENTS_FOR_UDF_CLASS",
       parameters = Map("num" -> "24"),
       sqlState = "0A000")
+  }
+
+  test("SPARK-58945: invalid UDF class error reports clazz") {
+    checkError(
+      exception = QueryCompilationErrors.invalidUDFClassError("example.InvalidFunction")
+        .asInstanceOf[InvalidUDFClassException],
+      condition = "_LEGACY_ERROR_TEMP_2450",
+      parameters = Map("clazz" -> "example.InvalidFunction"))
   }
 
   test("GROUPING_COLUMN_MISMATCH: not found the grouping column") {
@@ -1150,6 +1158,35 @@ class QueryCompilationErrorsSuite
       condition = "TABLE_LOCATION_URI_NOT_SPECIFIED",
       parameters = Map("identifier" -> identifier.toString)
     )
+  }
+
+  test("SPARK-58267: INVALID_FILE_FORMAT_FOR_STORED_AS: unknown STORED AS file format") {
+    withTable("s", "t") {
+      checkError(
+        exception = intercept[AnalysisException] {
+          sql("CREATE TABLE t (c1 INT) STORED AS UNKNOWN_FORMAT")
+        },
+        condition = "INVALID_FILE_FORMAT_FOR_STORED_AS",
+        sqlState = "42601",
+        parameters = Map("serdeInfo" -> "UNKNOWN_FORMAT"))
+
+      checkError(
+        exception = intercept[AnalysisException] {
+          sql("CREATE TABLE t STORED AS UNKNOWN_FORMAT AS SELECT 1")
+        },
+        condition = "INVALID_FILE_FORMAT_FOR_STORED_AS",
+        sqlState = "42601",
+        parameters = Map("serdeInfo" -> "UNKNOWN_FORMAT"))
+
+      sql("CREATE TABLE s (c1 INT) USING parquet")
+      checkError(
+        exception = intercept[AnalysisException] {
+          sql("CREATE TABLE t LIKE s STORED AS UNKNOWN_FORMAT")
+        },
+        condition = "INVALID_FILE_FORMAT_FOR_STORED_AS",
+        sqlState = "42601",
+        parameters = Map("serdeInfo" -> "UNKNOWN_FORMAT"))
+    }
   }
 }
 
